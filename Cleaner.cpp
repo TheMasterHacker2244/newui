@@ -45,7 +45,7 @@ function Get-ShortcutTarget {
 }
 
 function Clean-RecentFolder {
-    $recentPath = "C:\Users\$env:USERNAME\Recent"
+    $recentPath = "$env:APPDATA\Microsoft\Windows\Recent"
     
     if (-not (Test-Path $recentPath)) {
         Write-Host "Recent folder not found: $recentPath" -ForegroundColor Yellow
