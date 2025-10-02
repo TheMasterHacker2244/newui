@@ -1,4 +1,3 @@
-# Define your keywords (case-insensitive)
 $keywords = @(
     'matcha','evolve','software','loader','exploit','hack','mooze','isabelle',
     'matrix','severe','assembly','tsar','melatonin','external','dx9','serotonin',
@@ -16,10 +15,8 @@ $keywords = @(
     'X:','Y:','Z:','A:','B:','D:'
 )
 
-# Convert to lowercase for case-insensitive matching
 $keywords = $keywords | ForEach-Object { $_.ToLower() }
 
-# Function to check if text contains any of the keywords
 function Contains-Keyword {
     param ([string]$text)
     
@@ -27,7 +24,6 @@ function Contains-Keyword {
     
     $textLower = $text.ToLower()
     
-    # Check for keywords - NO WHITELIST for these specific registry paths
     foreach ($keyword in $keywords) {
         if ($textLower -match [regex]::Escape($keyword)) {
             return $true
@@ -36,7 +32,66 @@ function Contains-Keyword {
     return $false
 }
 
-# Function to scan and clean registry path
+function Get-ShortcutTarget {
+    param ([string]$shortcutPath)
+    
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($shortcutPath)
+        return $shortcut.TargetPath
+    } catch {
+        return $null
+    }
+}
+
+function Clean-RecentFolder {
+    $recentPath = "C:\Users\$env:USERNAME\Recent"
+    
+    if (-not (Test-Path $recentPath)) {
+        Write-Host "Recent folder not found: $recentPath" -ForegroundColor Yellow
+        return
+    }
+    
+    $shortcuts = Get-ChildItem -Path $recentPath -Filter "*.lnk" -Force -ErrorAction SilentlyContinue
+    Write-Host "Found $($shortcuts.Count) shortcuts in Recent folder" -ForegroundColor Gray
+    
+    foreach ($shortcut in $shortcuts) {
+        $shouldDelete = $false
+        
+        if (Contains-Keyword $shortcut.Name) {
+            $shouldDelete = $true
+            Write-Host "MATCH SHORTCUT NAME: $($shortcut.Name)" -ForegroundColor Magenta
+        }
+        
+        if (-not $shouldDelete) {
+            $targetPath = Get-ShortcutTarget -shortcutPath $shortcut.FullName
+            if ($targetPath) {
+                $targetExtension = [System.IO.Path]::GetExtension($targetPath).ToLower()
+                
+                if ($targetExtension -in '.cpp', '.ahk') {
+                    $shouldDelete = $true
+                    Write-Host "MATCH TARGET EXTENSION: $targetPath" -ForegroundColor Magenta
+                }
+                
+                if (-not $shouldDelete -and $targetPath -notlike "C:\*" -and $targetPath -match "^[A-Z]:\\") {
+                    $shouldDelete = $true
+                    Write-Host "MATCH NON-C DRIVE: $targetPath" -ForegroundColor Magenta
+                }
+                
+                if (-not $shouldDelete -and (Contains-Keyword $targetPath)) {
+                    $shouldDelete = $true
+                    Write-Host "MATCH TARGET PATH: $targetPath" -ForegroundColor Magenta
+                }
+            }
+        }
+        
+        if ($shouldDelete) {
+            Remove-Item -Path $shortcut.FullName -Force -ErrorAction SilentlyContinue
+            Write-Host "DELETED SHORTCUT: $($shortcut.FullName)" -ForegroundColor Red
+        }
+    }
+}
+
 function Clean-RegistryPath {
     param ([string]$registryPath)
     
@@ -48,10 +103,7 @@ function Clean-RegistryPath {
     }
     
     try {
-        # Get the registry key
         $regKey = Get-Item -Path $registryPath -ErrorAction Stop
-        
-        # Get all value names in this key
         $valueNames = $regKey.GetValueNames()
         
         Write-Host "Found $($valueNames.Count) values to check..." -ForegroundColor Gray
@@ -61,16 +113,13 @@ function Clean-RegistryPath {
                 $valueData = $regKey.GetValue($valueName)
                 $shouldDelete = $false
                 
-                # Check value name
                 if (Contains-Keyword $valueName) {
                     $shouldDelete = $true
                     Write-Host "MATCH VALUE NAME: $valueName" -ForegroundColor Magenta
                 }
                 
-                # Check value data
                 if (-not $shouldDelete -and $valueData -ne $null) {
                     if ($valueData -is [byte[]]) {
-                        # Binary data - convert to multiple formats for checking
                         $hexString = [System.BitConverter]::ToString($valueData)
                         $asciiString = [System.Text.Encoding]::ASCII.GetString($valueData)
                         
@@ -84,7 +133,6 @@ function Clean-RegistryPath {
                         }
                     }
                     elseif ($valueData -is [string[]]) {
-                        # Multi-string - join for checking
                         $combinedString = $valueData -join " "
                         if (Contains-Keyword $combinedString) { 
                             $shouldDelete = $true
@@ -92,7 +140,6 @@ function Clean-RegistryPath {
                         }
                     }
                     else {
-                        # Single string, DWORD, etc.
                         $stringValue = $valueData.ToString()
                         if (Contains-Keyword $stringValue) { 
                             $shouldDelete = $true
@@ -110,7 +157,6 @@ function Clean-RegistryPath {
             }
         }
         
-        # For AppSwitched path, also check subkeys
         if ($registryPath -like "*AppSwitched*") {
             $subkeys = Get-ChildItem -Path $registryPath -ErrorAction SilentlyContinue
             Write-Host "Found $($subkeys.Count) subkeys to check..." -ForegroundColor Gray
@@ -133,13 +179,7 @@ function Clean-RegistryPath {
     }
 }
 
-# ----------------------------------------
-# MAIN EXECUTION - Only the three specified paths
-# ----------------------------------------
-
-Write-Host "Starting aggressive registry cleanup..." -ForegroundColor Green
-Write-Host "NO WHITELIST - All matches will be deleted!" -ForegroundColor Red
-Write-Host "Focusing only on the three specified registry paths" -ForegroundColor Yellow
+Write-Host "Starting cleanup..." -ForegroundColor Green
 
 $targetPaths = @(
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppSwitched",
@@ -147,12 +187,12 @@ $targetPaths = @(
     "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers"
 )
 
+Write-Host "Scanning Recent folder..." -ForegroundColor Green
+Clean-RecentFolder
+
+Write-Host "Scanning Registry..." -ForegroundColor Green
 foreach ($path in $targetPaths) {
     Clean-RegistryPath -registryPath $path
 }
 
-Write-Host "Aggressive registry cleanup completed!" -ForegroundColor Green
-Write-Host "Scanned paths:" -ForegroundColor White
-foreach ($path in $targetPaths) {
-    Write-Host "  - $path" -ForegroundColor White
-}
+Write-Host "Cleanup completed!" -ForegroundColor Green
