@@ -34,6 +34,9 @@ function Contains-Keyword {
 # Section 1: Delete Registry Keys with specified keywords
 # ----------------------------------------
 
+# Get current user SID dynamically
+$currentUserSID = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | Where-Object {$_.ProfileImagePath -like "*$env:USERNAME*"}).PSChildName
+
 # Get all registry paths to scan
 $registryPaths = @(
     "HKCU:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
@@ -45,24 +48,31 @@ $registryPaths = @(
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings"
 )
 
+# Add the dynamic MuiCache path with SID if found
+if ($currentUserSID) {
+    $registryPaths += "Registry::HKEY_USERS\$currentUserSID\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache"
+}
+
 foreach ($path in $registryPaths) {
     try {
-        $subkeys = Get-ChildItem -Path $path -ErrorAction SilentlyContinue
-        if ($subkeys) {
-            foreach ($subkey in $subkeys) {
-                $name = $subkey.PSChildName.ToLower()
-                $values = Get-ItemProperty -Path $subkey.PSPath -ErrorAction SilentlyContinue | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
-                $valueContent = ""
-                foreach ($val in $values) {
-                    try {
-                        $content = (Get-ItemProperty -Path $subkey.PSPath -Name $val -ErrorAction SilentlyContinue).$val
-                        if ($content) {
-                            $valueContent += " $content"
-                        }
-                    } catch {}
-                }
-                if (Contains-Keyword $name -or (Contains-Keyword $valueContent)) {
-                    Remove-Item -Path $subkey.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path $path) {
+            $subkeys = Get-ChildItem -Path $path -ErrorAction SilentlyContinue
+            if ($subkeys) {
+                foreach ($subkey in $subkeys) {
+                    $name = $subkey.PSChildName.ToLower()
+                    $values = Get-ItemProperty -Path $subkey.PSPath -ErrorAction SilentlyContinue | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
+                    $valueContent = ""
+                    foreach ($val in $values) {
+                        try {
+                            $content = (Get-ItemProperty -Path $subkey.PSPath -Name $val -ErrorAction SilentlyContinue).$val
+                            if ($content) {
+                                $valueContent += " $content"
+                            }
+                        } catch {}
+                    }
+                    if (Contains-Keyword $name -or (Contains-Keyword $valueContent)) {
+                        Remove-Item -Path $subkey.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                    }
                 }
             }
         }
