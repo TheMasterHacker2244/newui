@@ -1,4 +1,3 @@
-# Define your keywords (case-insensitive)
 $keywords = @(
     'matcha','evolve','software','loader','exploit','hack','mooze','isabelle',
     'matrix','severe','assembly','tsar','melatonin','external','dx9','serotonin',
@@ -16,10 +15,8 @@ $keywords = @(
     'V:','W:','X:','Y:','Z:'
 )
 
-# Convert keywords to lowercase for case-insensitive matching
 $keywords = $keywords | ForEach-Object { $_.ToLower() }
 
-# Function to check if text contains any of the keywords
 function Contains-Keyword {
     param ([string]$text)
     foreach ($keyword in $keywords) {
@@ -30,14 +27,8 @@ function Contains-Keyword {
     return $false
 }
 
-# ----------------------------------------
-# Section 1: Delete Registry Keys with specified keywords
-# ----------------------------------------
-
-# Get current user SID dynamically
 $currentUserSID = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | Where-Object {$_.ProfileImagePath -like "*$env:USERNAME*"}).PSChildName
 
-# Get all registry paths to scan
 $registryPaths = @(
     "HKCU:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppSwitched",
@@ -48,7 +39,6 @@ $registryPaths = @(
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings"
 )
 
-# Add the dynamic MuiCache path with SID if found
 if ($currentUserSID) {
     $registryPaths += "Registry::HKEY_USERS\$currentUserSID\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache"
 }
@@ -81,11 +71,6 @@ foreach ($path in $registryPaths) {
     }
 }
 
-# ----------------------------------------
-# Section 2: Delete files in Prefetch and Recent items with keywords
-# ----------------------------------------
-
-# Delete files in Prefetch folder
 $prefetchPath = "$env:SystemRoot\Prefetch"
 Get-ChildItem -Path $prefetchPath -File -ErrorAction SilentlyContinue | ForEach-Object {
     $fileName = $_.Name.ToLower()
@@ -96,7 +81,6 @@ Get-ChildItem -Path $prefetchPath -File -ErrorAction SilentlyContinue | ForEach-
     }
 }
 
-# Delete files in Recent items
 $recentPath = "$env:APPDATA\Microsoft\Windows\Recent"
 Get-ChildItem -Path $recentPath -File -ErrorAction SilentlyContinue | ForEach-Object {
     $fileName = $_.Name.ToLower()
@@ -107,26 +91,15 @@ Get-ChildItem -Path $recentPath -File -ErrorAction SilentlyContinue | ForEach-Ob
     }
 }
 
-# ----------------------------------------
-# Section 3: Remove PowerShell traces
-# ----------------------------------------
-
-# Remove PowerShell history
 $historyPath = "$env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt"
 Remove-Item -Path $historyPath -Force -ErrorAction SilentlyContinue
 
-# Clear PowerShell event logs
 @('Windows PowerShell','Microsoft-Windows-PowerShell/Operational') | ForEach-Object {
     try {
         wevtutil cl $_ 2>&1 | Out-Null
     } catch {}
 }
 
-# ----------------------------------------
-# Section 4: Manage USB tray icon and refresh tray
-# ----------------------------------------
-
-# Hide USB tray icon
 $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Applets\SysTray'
 $name = 'Services'
 
