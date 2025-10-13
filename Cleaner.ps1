@@ -10,7 +10,7 @@ $keywords = @(
     'bootstrapper','bootstrappernew','santoware','mapper','bootstrappernew\.exe',
     'bootstrapper.exe','xeno.exe','xenoui.exe','solara.exe','mapper.exe',
     'loader.exe','evolve.exe','app.exe','bitcoin','boostrapper.exe',
-    'boostrappernew\.exe','authenticator.exe','inject','A:','B:','D:','E:','F:',
+    'boostrappernew\.exe','authenticator.exe','inject', 'thing','A:','B:','D:','E:','F:',
     'G:','H:','I:','J:','K:','L:','M:','N:','O:','P:','Q:','R:','S:','T:','U:',
     'V:','W:','X:','Y:','Z:'
 )
