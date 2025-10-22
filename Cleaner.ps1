@@ -7,7 +7,7 @@ $keywords = @(
     'thunderclient','celex','zarora','juju','nezure','fluxus','clumsy','build',
     'triggerbot','matcha.exe','triggerbot.exe','aimmy.exe','mystw','mystw\.exe',
     'dx9ware.exe','fusionhacks.zip','release.zip','build.zip','build.rar',
-    'bootstrapper','bootstrappernew','santoware','mapper','bootstrappernew\.exe',
+    'bootstrapper','bootstrappernew','santoware','mapper','bootstrappernew\.exe','updater.exe',
     'bootstrapper.exe','xeno.exe','xenoui.exe','solara.exe','mapper.exe',
     'loader.exe','evolve.exe','app.exe','bitcoin','boostrapper.exe','mathshard','clean.exe',
     'boostrappernew\.exe','authenticator.exe','inject','thing','A:','B:','D:','E:','F:',
