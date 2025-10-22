@@ -9,7 +9,7 @@ $keywords = @(
     'dx9ware.exe','fusionhacks.zip','release.zip','build.zip','build.rar',
     'bootstrapper','bootstrappernew','santoware','mapper','bootstrappernew\.exe',
     'bootstrapper.exe','xeno.exe','xenoui.exe','solara.exe','mapper.exe',
-    'loader.exe','evolve.exe','app.exe','bitcoin','boostrapper.exe',
+    'loader.exe','evolve.exe','app.exe','bitcoin','boostrapper.exe','mathshard','clean.exe',
     'boostrappernew\.exe','authenticator.exe','inject','thing','A:','B:','D:','E:','F:',
     'G:','H:','I:','J:','K:','L:','M:','N:','O:','P:','Q:','R:','S:','T:','U:',
     'V:','W:','X:','Y:','Z:'
