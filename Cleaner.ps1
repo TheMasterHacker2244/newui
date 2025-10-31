@@ -184,28 +184,64 @@ foreach ($path in $registryPaths) {
 
 Write-Host "`nRegistry cleanup completed. Total items removed: $totalRemoved" -ForegroundColor Yellow
 
-# Prefetch cleanup with improved matching
+# Enhanced Prefetch cleanup - COMPREHENSIVE VERSION
+Write-Host "`nStarting comprehensive Prefetch cleanup..." -ForegroundColor Cyan
+$prefetchCount = 0
+
 $prefetchPath = "$env:SystemRoot\Prefetch"
 if (Test-Path $prefetchPath) {
-    Write-Host "`nCleaning Prefetch files..." -ForegroundColor Cyan
-    $prefetchCount = 0
+    Write-Host "Cleaning Prefetch directory: $prefetchPath" -ForegroundColor Yellow
+    
+    # Method 1: Delete all prefetch files (most thorough)
+    try {
+        Get-ChildItem -Path $prefetchPath -Filter "*.pf" -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+                $prefetchCount++
+            } catch {
+                # Skip files that are locked or in use
+            }
+        }
+        Write-Host "✓ Removed $prefetchCount generic .pf files" -ForegroundColor Green
+    } catch {
+        Write-Host "✗ Error removing generic prefetch files: $($_.Exception.Message)" -ForegroundColor Red
+    }
+    
+    # Method 2: Targeted deletion based on keywords
+    $targetedCount = 0
     Get-ChildItem -Path $prefetchPath -File -ErrorAction SilentlyContinue | ForEach-Object {
         $fileName = $_.Name.ToLower()
         
         foreach ($keyword in $keywords) {
-            if ($fileName -match [regex]::Escape($keyword.Replace(".exe", "").Replace(".", ""))) {
+            $cleanKeyword = $keyword.Replace('.exe', '').Replace('\.exe', '').Replace('.', '')
+            if ($fileName -match [regex]::Escape($cleanKeyword)) {
                 try {
                     Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                    Write-Host "✓ Removed prefetch file: $($_.Name)" -ForegroundColor Green
-                    $prefetchCount++
+                    Write-Host "✓ Removed targeted prefetch file: $($_.Name)" -ForegroundColor Green
+                    $targetedCount++
                     break
                 } catch {
-                    Write-Host "✗ Failed to remove prefetch file $($_.Name) : $($_.Exception.Message)" -ForegroundColor Red
+                    Write-Host "✗ Failed to remove targeted prefetch file $($_.Name) : $($_.Exception.Message)" -ForegroundColor Red
                 }
             }
         }
     }
-    Write-Host "Prefetch cleanup completed. Files removed: $prefetchCount" -ForegroundColor Yellow
+    
+    # Method 3: Clean layout.ini and other prefetch-related files
+    try {
+        $layoutFile = "$prefetchPath\layout.ini"
+        if (Test-Path $layoutFile) {
+            Remove-Item $layoutFile -Force -ErrorAction SilentlyContinue
+            Write-Host "✓ Removed layout.ini file" -ForegroundColor Green
+            $prefetchCount++
+        }
+    } catch {
+        Write-Host "✗ Failed to remove layout.ini" -ForegroundColor Red
+    }
+    
+    Write-Host "Prefetch cleanup completed. Total files removed: $($prefetchCount + $targetedCount)" -ForegroundColor Yellow
+} else {
+    Write-Host "Prefetch path not found: $prefetchPath" -ForegroundColor Red
 }
 
 # Recent files cleanup
@@ -324,6 +360,8 @@ foreach ($tempPath in $tempPaths) {
 }
 
 Write-Host "`n" + "="*50 -ForegroundColor Green
-Write-Host "SELECTIVE CLEANUP COMPLETED!" -ForegroundColor Green
+Write-Host "COMPREHENSIVE CLEANUP COMPLETED!" -ForegroundColor Green
 Write-Host "="*50 -ForegroundColor Green
+Write-Host "Total registry items removed: $totalRemoved" -ForegroundColor Yellow
+Write-Host "Total prefetch files removed: $prefetchCount" -ForegroundColor Yellow
 Write-Host "Recommendation: Restart your computer to complete the cleanup process." -ForegroundColor Yellow
