@@ -1,3 +1,10 @@
+# Run as Administrator check
+if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    Write-Host "This script requires Administrator privileges. Restarting as Administrator..."
+    Start-Process PowerShell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    exit
+}
+
 $keywords = @(
     'matcha','evolve','mooze','isabelle','matrix','tsar','melatonin','serotonin',
     'aimmy','valex','vector','photon','nezur','yebra','haze/myst','haze','myst',
@@ -21,7 +28,11 @@ function Contains-Keyword {
     
     $lowerText = $text.ToLower()
     foreach ($keyword in $keywords) {
-        if ($lowerText -match "\\$keyword\\" -or $lowerText -match "\\$keyword\.exe" -or $lowerText -eq $keyword) {
+        # More flexible matching for file paths and registry values
+        if ($lowerText -match [regex]::Escape($keyword) -or 
+            $lowerText -match "\\$keyword\\" -or 
+            $lowerText -match "\\$keyword\.exe" -or 
+            $lowerText -eq $keyword) {
             return $true
         }
     }
@@ -38,14 +49,26 @@ function Should-Delete-RegistryValue {
     $lowerValue = $value.ToLower()
     
     foreach ($keyword in $keywords) {
-        if ($lowerValue -match ".*\\$keyword\\.*" -or $lowerValue -match ".*\\$keyword\.exe.*") {
+        # More comprehensive matching for registry values
+        if ($lowerValue -match [regex]::Escape($keyword) -or 
+            $lowerValue -match ".*\\$keyword\\.*" -or 
+            $lowerValue -match ".*\\$keyword\.exe.*" -or
+            $lowerValue -match ".*$keyword.*") {
             return $true
         }
     }
     return $false
 }
 
-$currentUserSID = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | Where-Object {$_.ProfileImagePath -like "*$env:USERNAME*"}).PSChildName
+Write-Host "Starting comprehensive cleanup..." -ForegroundColor Green
+
+# Get current user SID more reliably
+$currentUserSID = (Get-WmiObject -Class Win32_UserProfile | Where-Object { $_.LocalPath -eq "C:\Users\$env:USERNAME" }).SID
+if (-not $currentUserSID) {
+    $currentUserSID = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | Where-Object {$_.ProfileImagePath -like "*$env:USERNAME*"}).PSChildName
+}
+
+Write-Host "User SID: $currentUserSID" -ForegroundColor Yellow
 
 $registryPaths = @(
     "HKCU:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
@@ -54,20 +77,31 @@ $registryPaths = @(
     "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store",
     "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers",
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\WordWheelQuery",
-    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU",
+    "HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\ApplicationAssociationStore",
+    "HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search\RecentApps"
 )
 
+# Add user-specific paths if SID is available
 if ($currentUserSID) {
-    $registryPaths += "Registry::HKEY_USERS\$currentUserSID\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache"
-    $registryPaths += "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\WordWheelQuery"
-    $registryPaths += "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"
+    $registryPaths += @(
+        "Registry::HKEY_USERS\$currentUserSID\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
+        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\WordWheelQuery",
+        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU",
+        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\Shell\Associations\ApplicationAssociationStore",
+        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Search\RecentApps"
+    )
 }
 
+# Registry cleanup with improved logic
+$totalRemoved = 0
 foreach ($path in $registryPaths) {
     try {
         if (Test-Path $path) {
-            Write-Host "Processing registry path: $path"
+            Write-Host "`nProcessing registry path: $path" -ForegroundColor Cyan
             
+            # Process main key properties
             $mainKeyProperties = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue
             if ($mainKeyProperties) {
                 $propertyNames = $mainKeyProperties.PSObject.Properties | Where-Object { 
@@ -77,17 +111,20 @@ foreach ($path in $registryPaths) {
                 foreach ($propName in $propertyNames) {
                     $propValue = $mainKeyProperties.$propName
                     
-                    if ($propValue -is [string] -and (Should-Delete-RegistryValue $propValue)) {
+                    if (($propValue -is [string] -and (Should-Delete-RegistryValue $propValue)) -or 
+                        (Contains-Keyword $propName)) {
                         try {
                             Remove-ItemProperty -Path $path -Name $propName -Force -ErrorAction SilentlyContinue
-                            Write-Host "Removed registry value: $path\$propName"
+                            Write-Host "✓ Removed registry value: $propName" -ForegroundColor Green
+                            $totalRemoved++
                         } catch {
-                            Write-Host "Failed to remove value $propName from $path : $($_.Exception.Message)"
+                            Write-Host "✗ Failed to remove value $propName from $path : $($_.Exception.Message)" -ForegroundColor Red
                         }
                     }
                 }
             }
             
+            # Process subkeys recursively
             $items = Get-ChildItem -Path $path -ErrorAction SilentlyContinue -Recurse
             
             foreach ($item in $items) {
@@ -105,101 +142,188 @@ foreach ($path in $registryPaths) {
                         foreach ($propName in $propertyNames) {
                             $propValue = $subKeyProperties.$propName
                             
-                            if ($propValue -is [string] -and (Should-Delete-RegistryValue $propValue)) {
+                            if (($propValue -is [string] -and (Should-Delete-RegistryValue $propValue)) -or 
+                                (Contains-Keyword $propName)) {
                                 try {
                                     Remove-ItemProperty -Path $subKeyPath -Name $propName -Force -ErrorAction SilentlyContinue
-                                    Write-Host "Removed registry value: $subKeyPath\$propName"
+                                    Write-Host "✓ Removed registry value: $subKeyPath\$propName" -ForegroundColor Green
                                     $deleteEntireKey = $true
+                                    $totalRemoved++
                                 } catch {
-                                    Write-Host "Failed to remove value $propName from $subKeyPath : $($_.Exception.Message)"
+                                    Write-Host "✗ Failed to remove value $propName from $subKeyPath : $($_.Exception.Message)" -ForegroundColor Red
                                 }
                             }
+                        }
+                        
+                        # Check if the key name itself contains keywords
+                        if (Contains-Keyword $subKeyPath) {
+                            $deleteEntireKey = $true
                         }
                         
                         if ($deleteEntireKey) {
                             try {
                                 Remove-Item -Path $subKeyPath -Recurse -Force -ErrorAction SilentlyContinue
-                                Write-Host "Removed registry key: $subKeyPath"
+                                Write-Host "✓ Removed registry key: $subKeyPath" -ForegroundColor Green
+                                $totalRemoved++
                             } catch {
-                                Write-Host "Failed to remove key $subKeyPath : $($_.Exception.Message)"
+                                Write-Host "✗ Failed to remove key $subKeyPath : $($_.Exception.Message)" -ForegroundColor Red
                             }
                         }
                     }
                 } catch {
-                    Write-Host "Error processing subkey: $($_.Exception.Message)"
+                    Write-Host "Error processing subkey: $($_.Exception.Message)" -ForegroundColor Red
                     continue
                 }
             }
         }
     } catch {
-        Write-Host "Error processing path $path : $($_.Exception.Message)"
+        Write-Host "Error processing path $path : $($_.Exception.Message)" -ForegroundColor Red
         continue
     }
 }
 
+Write-Host "`nRegistry cleanup completed. Total items removed: $totalRemoved" -ForegroundColor Yellow
+
+# Prefetch cleanup with improved matching
 $prefetchPath = "$env:SystemRoot\Prefetch"
 if (Test-Path $prefetchPath) {
+    Write-Host "`nCleaning Prefetch files..." -ForegroundColor Cyan
+    $prefetchCount = 0
     Get-ChildItem -Path $prefetchPath -File -ErrorAction SilentlyContinue | ForEach-Object {
         $fileName = $_.Name.ToLower()
         
-        if ($fileName -match "matcha|evolve|aimmy|myst|haze|xeno|solara|thing\.exe") {
-            try {
-                Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                Write-Host "Removed prefetch file: $($_.FullName)"
-            } catch {
-                Write-Host "Failed to remove prefetch file $($_.FullName) : $($_.Exception.Message)"
-            }
-        }
-    }
-}
-
-$recentPath = "$env:APPDATA\Microsoft\Windows\Recent"
-if (Test-Path $recentPath) {
-    Get-ChildItem -Path $recentPath -File -ErrorAction SilentlyContinue | ForEach-Object {
-        $fileName = $_.Name.ToLower()
-        if ($fileName -match "matcha|evolve|aimmy|myst|haze|xeno|solara|thing\.exe|windowsdefender--threat-|storage|prefetch|settings|lastactivitycheckcleaner") {
-            try {
-                Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                Write-Host "Removed recent file: $($_.FullName)"
-            } catch {
-                Write-Host "Failed to remove recent file $($_.FullName) : $($_.Exception.Message)"
-            }
-        }
-        
-        if ($_.Extension -eq '.lnk') {
-            try {
-                $shell = New-Object -ComObject WScript.Shell
-                $shortcut = $shell.CreateShortcut($_.FullName)
-                $targetPath = $shortcut.TargetPath
-                
-                if ($targetPath -and !$targetPath.StartsWith('C:\')) {
+        foreach ($keyword in $keywords) {
+            if ($fileName -match [regex]::Escape($keyword.Replace(".exe", "").Replace(".", ""))) {
+                try {
                     Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                    Write-Host "Removed suspicious shortcut (non-C: drive target): $($_.FullName)"
+                    Write-Host "✓ Removed prefetch file: $($_.Name)" -ForegroundColor Green
+                    $prefetchCount++
+                    break
+                } catch {
+                    Write-Host "✗ Failed to remove prefetch file $($_.Name) : $($_.Exception.Message)" -ForegroundColor Red
                 }
-            } catch {
-                Write-Host "Could not read shortcut target for $($_.FullName) : $($_.Exception.Message)"
+            }
+        }
+    }
+    Write-Host "Prefetch cleanup completed. Files removed: $prefetchCount" -ForegroundColor Yellow
+}
+
+# Recent files cleanup
+$recentPaths = @(
+    "$env:APPDATA\Microsoft\Windows\Recent",
+    "$env:APPDATA\Microsoft\Windows\Recent\AutomaticDestinations",
+    "$env:APPDATA\Microsoft\Windows\Recent\CustomDestinations"
+)
+
+foreach ($recentPath in $recentPaths) {
+    if (Test-Path $recentPath) {
+        Write-Host "`nCleaning Recent files: $recentPath" -ForegroundColor Cyan
+        $recentCount = 0
+        Get-ChildItem -Path $recentPath -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $fileName = $_.Name.ToLower()
+            $shouldRemove = $false
+            
+            foreach ($keyword in $keywords) {
+                if ($fileName -match [regex]::Escape($keyword)) {
+                    $shouldRemove = $true
+                    break
+                }
+            }
+            
+            # Additional suspicious patterns
+            if ($fileName -match "windowsdefender.*threat" -or 
+                $fileName -match "storage" -or 
+                $fileName -match "prefetch" -or 
+                $fileName -match "settings" -or 
+                $fileName -match "lastactivitycheckcleaner") {
+                $shouldRemove = $true
+            }
+            
+            if ($shouldRemove) {
+                try {
+                    Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+                    Write-Host "✓ Removed recent file: $($_.Name)" -ForegroundColor Green
+                    $recentCount++
+                } catch {
+                    Write-Host "✗ Failed to remove recent file $($_.Name) : $($_.Exception.Message)" -ForegroundColor Red
+                }
+            }
+            
+            # Check .lnk files for suspicious targets
+            if ($_.Extension -eq '.lnk') {
+                try {
+                    $shell = New-Object -ComObject WScript.Shell
+                    $shortcut = $shell.CreateShortcut($_.FullName)
+                    $targetPath = $shortcut.TargetPath
+                    
+                    if ($targetPath -and !$targetPath.StartsWith('C:\') -and !$targetPath.StartsWith('C:\Windows')) {
+                        Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+                        Write-Host "✓ Removed suspicious shortcut: $($_.Name)" -ForegroundColor Green
+                        $recentCount++
+                    }
+                } catch {
+                    # Ignore errors reading shortcuts
+                }
+            }
+        }
+        Write-Host "Recent files cleanup completed for $recentPath. Files removed: $recentCount" -ForegroundColor Yellow
+    }
+}
+
+# PowerShell history cleanup
+Write-Host "`nCleaning PowerShell history..." -ForegroundColor Cyan
+$historyPaths = @(
+    "$env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt",
+    "$env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\VisualStudioCode_host_history.txt",
+    "$env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\Windows PowerShell_host_history.txt"
+)
+
+foreach ($historyPath in $historyPaths) {
+    if (Test-Path $historyPath) {
+        try {
+            Remove-Item -Path $historyPath -Force -ErrorAction SilentlyContinue
+            Write-Host "✓ Removed PowerShell history: $historyPath" -ForegroundColor Green
+        } catch {
+            Write-Host "✗ Failed to remove PowerShell history $historyPath : $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+}
+
+# Event log clearing
+Write-Host "`nClearing event logs..." -ForegroundColor Cyan
+$eventLogs = @('Windows PowerShell', 'Microsoft-Windows-PowerShell/Operational', 'System', 'Application')
+
+foreach ($log in $eventLogs) {
+    try {
+        wevtutil cl $log 2>&1 | Out-Null
+        Write-Host "✓ Cleared event log: $log" -ForegroundColor Green
+    } catch {
+        Write-Host "✗ Failed to clear event log $log : $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+# Additional cleanup: Temp files
+Write-Host "`nCleaning temporary files..." -ForegroundColor Cyan
+$tempPaths = @("$env:TEMP", "$env:SystemRoot\Temp")
+foreach ($tempPath in $tempPaths) {
+    if (Test-Path $tempPath) {
+        Get-ChildItem -Path $tempPath -File -ErrorAction SilentlyContinue | ForEach-Object {
+            foreach ($keyword in $keywords) {
+                if ($_.Name.ToLower() -match [regex]::Escape($keyword)) {
+                    try {
+                        Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+                        Write-Host "✓ Removed temp file: $($_.Name)" -ForegroundColor Green
+                        break
+                    } catch {
+                        # Ignore deletion errors for temp files
+                    }
+                }
             }
         }
     }
 }
 
-$historyPath = "$env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt"
-if (Test-Path $historyPath) {
-    try {
-        Remove-Item -Path $historyPath -Force -ErrorAction SilentlyContinue
-        Write-Host "Removed PowerShell history"
-    } catch {
-        Write-Host "Failed to remove PowerShell history: $($_.Exception.Message)"
-    }
-}
-
-@('Windows PowerShell','Microsoft-Windows-PowerShell/Operational') | ForEach-Object {
-    try {
-        wevtutil cl $_ 2>&1 | Out-Null
-        Write-Host "Cleared event log: $_"
-    } catch {
-        Write-Host "Failed to clear event log $_ : $($_.Exception.Message)"
-    }
-}
-
-Write-Host "Selective cleanup completed!"
+Write-Host "`n" + "="*50 -ForegroundColor Green
+Write-Host "SELECTIVE CLEANUP COMPLETED!" -ForegroundColor Green
+Write-Host "="*50 -ForegroundColor Green
+Write-Host "Recommendation: Restart your computer to complete the cleanup process." -ForegroundColor Yellow
