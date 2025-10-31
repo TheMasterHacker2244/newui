@@ -14,7 +14,7 @@ $keywords = @(
     'fusionhacks\.zip','release\.zip','build\.zip','build\.rar','bootstrappernew',
     'santoware','bootstrappernew\.exe','xeno\.exe','xenoui\.exe','solara\.exe',
     'mapper\.exe','evolve\.exe','boostrapper\.exe','mathshard','clean\.exe',
-    'boostrappernew\.exe','authenticator\.exe','thing\.exe'
+    'boostrappernew\.exe','authenticator\.exe','thing\.exe','app.exe'
 )
 
 $keywords = $keywords | ForEach-Object { $_.ToLower() }
