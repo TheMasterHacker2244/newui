@@ -184,67 +184,67 @@ foreach ($path in $registryPaths) {
 
 Write-Host "`nRegistry cleanup completed. Total items removed: $totalRemoved" -ForegroundColor Yellow
 
-# Enhanced Prefetch cleanup - COMPREHENSIVE VERSION
-Write-Host "`nStarting comprehensive Prefetch cleanup..." -ForegroundColor Cyan
+# TARGETED Prefetch cleanup - ONLY deletes files matching keywords
+Write-Host "`nStarting TARGETED Prefetch cleanup (keywords only)..." -ForegroundColor Cyan
 $prefetchCount = 0
 
 $prefetchPath = "$env:SystemRoot\Prefetch"
 if (Test-Path $prefetchPath) {
-    Write-Host "Cleaning Prefetch directory: $prefetchPath" -ForegroundColor Yellow
+    Write-Host "Scanning Prefetch directory: $prefetchPath" -ForegroundColor Yellow
     
-    # Method 1: Delete all prefetch files (most thorough)
-    try {
-        Get-ChildItem -Path $prefetchPath -Filter "*.pf" -ErrorAction SilentlyContinue | ForEach-Object {
-            try {
-                Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                $prefetchCount++
-            } catch {
-                # Skip files that are locked or in use
-            }
-        }
-        Write-Host "✓ Removed $prefetchCount generic .pf files" -ForegroundColor Green
-    } catch {
-        Write-Host "✗ Error removing generic prefetch files: $($_.Exception.Message)" -ForegroundColor Red
-    }
-    
-    # Method 2: Targeted deletion based on keywords
-    $targetedCount = 0
+    # ONLY delete files that match keywords
     Get-ChildItem -Path $prefetchPath -File -ErrorAction SilentlyContinue | ForEach-Object {
         $fileName = $_.Name.ToLower()
+        $fileDeleted = $false
         
         foreach ($keyword in $keywords) {
             $cleanKeyword = $keyword.Replace('.exe', '').Replace('\.exe', '').Replace('.', '')
+            # Match the keyword in the filename
             if ($fileName -match [regex]::Escape($cleanKeyword)) {
                 try {
                     Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
                     Write-Host "✓ Removed targeted prefetch file: $($_.Name)" -ForegroundColor Green
-                    $targetedCount++
+                    $prefetchCount++
+                    $fileDeleted = $true
                     break
                 } catch {
                     Write-Host "✗ Failed to remove targeted prefetch file $($_.Name) : $($_.Exception.Message)" -ForegroundColor Red
                 }
             }
         }
-    }
-    
-    # Method 3: Clean layout.ini and other prefetch-related files
-    try {
-        $layoutFile = "$prefetchPath\layout.ini"
-        if (Test-Path $layoutFile) {
-            Remove-Item $layoutFile -Force -ErrorAction SilentlyContinue
-            Write-Host "✓ Removed layout.ini file" -ForegroundColor Green
-            $prefetchCount++
+        
+        # Also check for common cheat patterns in prefetch
+        if (-not $fileDeleted) {
+            $suspiciousPatterns = @(
+                'matcha', 'evolve', 'aimmy', 'myst', 'haze', 'xeno', 'solara', 
+                'thing', 'triggerbot', 'dx9ware', 'bootstrapper', 'authenticator'
+            )
+            
+            foreach ($pattern in $suspiciousPatterns) {
+                if ($fileName -match $pattern) {
+                    try {
+                        Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+                        Write-Host "✓ Removed suspicious prefetch file: $($_.Name)" -ForegroundColor Green
+                        $prefetchCount++
+                        break
+                    } catch {
+                        Write-Host "✗ Failed to remove suspicious prefetch file $($_.Name) : $($_.Exception.Message)" -ForegroundColor Red
+                    }
+                }
+            }
         }
-    } catch {
-        Write-Host "✗ Failed to remove layout.ini" -ForegroundColor Red
     }
     
-    Write-Host "Prefetch cleanup completed. Total files removed: $($prefetchCount + $targetedCount)" -ForegroundColor Yellow
+    if ($prefetchCount -eq 0) {
+        Write-Host "No prefetch files matching keywords were found." -ForegroundColor Yellow
+    } else {
+        Write-Host "Targeted Prefetch cleanup completed. Files removed: $prefetchCount" -ForegroundColor Yellow
+    }
 } else {
     Write-Host "Prefetch path not found: $prefetchPath" -ForegroundColor Red
 }
 
-# Recent files cleanup
+# Recent files cleanup (keyword targeted only)
 $recentPaths = @(
     "$env:APPDATA\Microsoft\Windows\Recent",
     "$env:APPDATA\Microsoft\Windows\Recent\AutomaticDestinations",
@@ -259,20 +259,12 @@ foreach ($recentPath in $recentPaths) {
             $fileName = $_.Name.ToLower()
             $shouldRemove = $false
             
+            # ONLY remove if it matches keywords
             foreach ($keyword in $keywords) {
                 if ($fileName -match [regex]::Escape($keyword)) {
                     $shouldRemove = $true
                     break
                 }
-            }
-            
-            # Additional suspicious patterns
-            if ($fileName -match "windowsdefender.*threat" -or 
-                $fileName -match "storage" -or 
-                $fileName -match "prefetch" -or 
-                $fileName -match "settings" -or 
-                $fileName -match "lastactivitycheckcleaner") {
-                $shouldRemove = $true
             }
             
             if ($shouldRemove) {
@@ -292,7 +284,7 @@ foreach ($recentPath in $recentPaths) {
                     $shortcut = $shell.CreateShortcut($_.FullName)
                     $targetPath = $shortcut.TargetPath
                     
-                    if ($targetPath -and !$targetPath.StartsWith('C:\') -and !$targetPath.StartsWith('C:\Windows')) {
+                    if ($targetPath -and (Contains-Keyword $targetPath)) {
                         Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
                         Write-Host "✓ Removed suspicious shortcut: $($_.Name)" -ForegroundColor Green
                         $recentCount++
@@ -338,7 +330,7 @@ foreach ($log in $eventLogs) {
     }
 }
 
-# Additional cleanup: Temp files
+# Additional cleanup: Temp files (keyword targeted only)
 Write-Host "`nCleaning temporary files..." -ForegroundColor Cyan
 $tempPaths = @("$env:TEMP", "$env:SystemRoot\Temp")
 foreach ($tempPath in $tempPaths) {
@@ -360,7 +352,7 @@ foreach ($tempPath in $tempPaths) {
 }
 
 Write-Host "`n" + "="*50 -ForegroundColor Green
-Write-Host "COMPREHENSIVE CLEANUP COMPLETED!" -ForegroundColor Green
+Write-Host "TARGETED CLEANUP COMPLETED!" -ForegroundColor Green
 Write-Host "="*50 -ForegroundColor Green
 Write-Host "Total registry items removed: $totalRemoved" -ForegroundColor Yellow
 Write-Host "Total prefetch files removed: $prefetchCount" -ForegroundColor Yellow
