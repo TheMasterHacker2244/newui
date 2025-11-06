@@ -84,13 +84,18 @@ $registryPaths = @(
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU",
     "HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\ApplicationAssociationStore",
     "HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations",
-    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search\RecentApps"
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search\RecentApps",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\ShowJumpView",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppBadgeUpdated"
 )
 
-# Add user-specific paths if SID is available
 if ($currentUserSID) {
     $registryPaths += @(
         "Registry::HKEY_USERS\$currentUserSID\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
+        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppSwitched",
+        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\ShowJumpView",
+        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppLaunch",
+        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppBadgeUpdated",
         "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\WordWheelQuery",
         "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU",
         "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\Shell\Associations\ApplicationAssociationStore",
@@ -98,7 +103,6 @@ if ($currentUserSID) {
     )
 }
 
-# Registry cleanup with improved logic
 $totalRemoved = 0
 foreach ($path in $registryPaths) {
     try {
