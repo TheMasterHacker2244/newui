@@ -248,7 +248,7 @@ if (Test-Path $prefetchPath) {
     Write-Host "Prefetch path not found: $prefetchPath" -ForegroundColor Red
 }
 
-# Recent files cleanup (keyword targeted only)
+# Recent files cleanup
 $recentPaths = @(
     "$env:APPDATA\Microsoft\Windows\Recent",
     "$env:APPDATA\Microsoft\Windows\Recent\AutomaticDestinations",
@@ -259,45 +259,42 @@ foreach ($recentPath in $recentPaths) {
     if (Test-Path $recentPath) {
         Write-Host "`nCleaning Recent files: $recentPath" -ForegroundColor Cyan
         $recentCount = 0
+
         Get-ChildItem -Path $recentPath -File -ErrorAction SilentlyContinue | ForEach-Object {
-            $fileName = $_.Name.ToLower()
-            $shouldRemove = $false
-            
-            # ONLY remove if it matches keywords
-            foreach ($keyword in $keywords) {
-                if ($fileName -match [regex]::Escape($keyword)) {
-                    $shouldRemove = $true
-                    break
-                }
+            $file = $_
+            $name  = $file.Name.ToLower()
+
+            $delete = $false
+
+            if ($name -match 'thing' -or $name -match 'storage') {
+                $delete = $true
             }
-            
-            if ($shouldRemove) {
+
+            if (-not $delete -and $file.Extension -eq '.lnk') {
                 try {
-                    Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                    Write-Host "✓ Removed recent file: $($_.Name)" -ForegroundColor Green
-                    $recentCount++
-                } catch {
-                    Write-Host "✗ Failed to remove recent file $($_.Name) : $($_.Exception.Message)" -ForegroundColor Red
-                }
-            }
-            
-            # Check .lnk files for suspicious targets
-            if ($_.Extension -eq '.lnk') {
-                try {
-                    $shell = New-Object -ComObject WScript.Shell
-                    $shortcut = $shell.CreateShortcut($_.FullName)
-                    $targetPath = $shortcut.TargetPath
-                    
-                    if ($targetPath -and (Contains-Keyword $targetPath)) {
-                        Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                        Write-Host "✓ Removed suspicious shortcut: $($_.Name)" -ForegroundColor Green
-                        $recentCount++
+                    $shell    = New-Object -ComObject WScript.Shell
+                    $shortcut = $shell.CreateShortcut($file.FullName)
+                    $target   = ($shortcut.TargetPath | ForEach-Object { $_.ToLower() })
+
+                    if ($target -and $target -match '\.ahk') {
+                        $delete = $true
                     }
                 } catch {
-                    # Ignore errors reading shortcuts
+                    # ignore shortcut read errors
+                }
+            }
+
+            if ($delete) {
+                try {
+                    Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
+                    Write-Host "✓ Removed recent file: $($file.Name)" -ForegroundColor Green
+                    $recentCount++
+                } catch {
+                    Write-Host "✗ Failed to remove recent file $($file.Name) : $($_.Exception.Message)" -ForegroundColor Red
                 }
             }
         }
+
         Write-Host "Recent files cleanup completed for $recentPath. Files removed: $recentCount" -ForegroundColor Yellow
     }
 }
