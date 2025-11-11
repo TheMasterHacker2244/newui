@@ -14,7 +14,7 @@ $keywords = @(
     'fusionhacks\.zip','release\.zip','build\.zip','build\.rar','bootstrappernew',
     'santoware','bootstrappernew\.exe','xeno\.exe','xenoui\.exe','solara\.exe',
     'mapper\.exe','evolve\.exe','boostrapper\.exe','mathshard','clean\.exe',
-    'boostrappernew\.exe','authenticator\.exe','thing\.exe','app.exe','update.exe','upgrade','threat-',
+    'boostrappernew\.exe','authenticator\.exe','thing\.exe','app.exe','update.exe','updater.exe','upgrade','threat-',
     "J:","A:","B:","D:","E:","F:","G:","H:","I:","J:","K:","L:","M:",
     "N:","O:","P:","Q:","R:","S:","T:","U:","V:","W:","X:","Y:","Z:",
     "Aura","loader"
