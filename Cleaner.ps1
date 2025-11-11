@@ -7,7 +7,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 $keywords = @(
     'matcha','evolve','mooze','isabelle','matrix','tsar','melatonin','serotonin',
-    'aimmy','valex','vector','photon','nezur','yebra','haze/myst','haze','myst',
+    'aimmy','aimbot','valex','vector','photon','nezur','yebra','haze/myst','haze','myst',
     'horizon','havoc','colorbot','xeno','solara','olduimatrix','monkeyaim',
     'thunderaim','thunderclient','celex','zarora','juju','nezure','fluxus','clumsy',
     'matcha\.exe','triggerbot\.exe','aimmy\.exe','mystw\.exe','dx9ware\.exe',
