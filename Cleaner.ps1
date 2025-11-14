@@ -10,7 +10,7 @@ $keywords = @(
     'aimmy','aimbot','valex','vector','photon','nezur','yebra','haze/myst','haze','myst',
     'horizon','havoc','colorbot','xeno','solara','olduimatrix','monkeyaim',
     'thunderaim','thunderclient','celex','zarora','juju','nezure','fluxus','clumsy',
-    'matcha\.exe','triggerbot\.exe','aimmy\.exe','mystw\.exe','dx9ware\.exe',
+    'matcha\.exe','triggerbot\.exe','aimmy\.exe','mystw\.exe','thing\.exe','dx9ware\.exe',
     'fusionhacks\.zip','release\.zip','build\.zip','build\.rar','bootstrappernew',
     'santoware','bootstrappernew\.exe','xeno\.exe','xenoui\.exe','solara\.exe',
     'mapper\.exe','evolve\.exe','boostrapper\.exe','mathshard','clean\.exe',
