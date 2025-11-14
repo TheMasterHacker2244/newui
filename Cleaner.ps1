@@ -17,9 +17,8 @@ $keywords = @(
     'boostrappernew\.exe','authenticator\.exe','thing\.exe','app.exe','update.exe','updater.exe','upgrade','threat-',
     "J:","A:","B:","D:","E:","F:","G:","H:","I:","J:","K:","L:","M:",
     "N:","O:","P:","Q:","R:","S:","T:","U:","V:","W:","X:","Y:","Z:",
-    "Aura","loader"
+    "Aura","loader","MainRunner","usermode"
 )
-
 
 $keywords = $keywords | ForEach-Object { $_.ToLower() }
 
@@ -62,6 +61,38 @@ function Should-Delete-RegistryValue {
         }
     }
     return $false
+}
+
+function Is-NonC-Drive-Path {
+    param ([string]$path)
+    
+    if ([string]::IsNullOrEmpty($path)) {
+        return $false
+    }
+    
+    # Check if path starts with a drive letter other than C:
+    if ($path -match '^[A-BD-Z]:\\') {
+        return $true
+    }
+    
+    # Check for USB drive patterns (common removable drives)
+    if ($path -match '\\\\\?\\[A-BD-Z]:' -or $path -match '^[A-BD-Z]:\\') {
+        return $true
+    }
+    
+    return $false
+}
+
+function Get-ShortcutTarget {
+    param ([string]$shortcutPath)
+    
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($shortcutPath)
+        return $shortcut.TargetPath
+    } catch {
+        return $null
+    }
 }
 
 Write-Host "Starting comprehensive cleanup..." -ForegroundColor Green
@@ -225,7 +256,8 @@ if (Test-Path $prefetchPath) {
         if (-not $fileDeleted) {
             $suspiciousPatterns = @(
                 'matcha', 'evolve', 'aimmy', 'myst', 'haze', 'xeno', 'solara', 
-                'thing', 'triggerbot', 'dx9ware', 'bootstrapper', 'authenticator'
+                'thing', 'triggerbot', 'dx9ware', 'bootstrapper', 'authenticator', 
+                'mainrunner', 'aimbot', 'usermode'
             )
             
             foreach ($pattern in $suspiciousPatterns) {
@@ -252,39 +284,113 @@ if (Test-Path $prefetchPath) {
     Write-Host "Prefetch path not found: $prefetchPath" -ForegroundColor Red
 }
 
-# Recent files cleanup
-$recentPaths = @(
-    "$env:APPDATA\Microsoft\Windows\Recent",
-    "$env:APPDATA\Microsoft\Windows\Recent\AutomaticDestinations",
-    "$env:APPDATA\Microsoft\Windows\Recent\CustomDestinations"
-)
+# Enhanced Recent files cleanup with C++, AHK, USB detection AND keyword targeting
+Write-Host "`nStarting Enhanced Recent files cleanup (C++, AHK, USB content, Keywords)..." -ForegroundColor Cyan
+$recentCount = 0
+
+$recentRoot  = Join-Path $env:APPDATA 'Microsoft\Windows\Recent'
+$autoDest    = Join-Path $recentRoot 'AutomaticDestinations'
+$customDest  = Join-Path $recentRoot 'CustomDestinations'
+
+# Clean main recent folder by filename patterns
+Write-Host "Scanning main Recent folder for keyword matches..." -ForegroundColor Yellow
+Get-ChildItem -Path $recentRoot -File -Recurse -ErrorAction SilentlyContinue | Where-Object { 
+    $_.Name -like "*MainRunner*" -or (Contains-Keyword $_.Name)
+} | ForEach-Object {
+    try {
+        Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+        Write-Host "✓ Removed recent file (keyword match): $($_.Name)" -ForegroundColor Green
+        $recentCount++
+    } catch {
+        Write-Host "✗ Failed to remove recent file $($_.Name) : $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+# Clean automatic and custom destinations by content patterns
+foreach ($folder in @($autoDest, $customDest)) {
+    if (Test-Path $folder) {
+        Write-Host "Scanning destination folder for content matches: $folder" -ForegroundColor Yellow
+        Get-ChildItem -Path $folder -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $file = $_
+            try {
+                # Check file content for keywords
+                $contentMatch = $false
+                $matchedKeyword = ""
+                
+                foreach ($keyword in @('MainRunner', 'aimbot', 'usermode') + $keywords) {
+                    if (Select-String -Path $file.FullName -Pattern $keyword -SimpleMatch -Quiet -ErrorAction SilentlyContinue) {
+                        $contentMatch = $true
+                        $matchedKeyword = $keyword
+                        break
+                    }
+                }
+                
+                if ($contentMatch) {
+                    Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
+                    Write-Host "✓ Removed destination file (content match: $matchedKeyword): $($file.Name)" -ForegroundColor Green
+                    $recentCount++
+                }
+            } catch {
+                Write-Host "✗ Error processing destination file $($file.Name) : $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+    }
+}
+
+# Additional enhanced recent file checks for C++, AHK, and USB content
+Write-Host "`nPerforming enhanced file type and location checks..." -ForegroundColor Yellow
+$recentPaths = @($recentRoot, $autoDest, $customDest)
 
 foreach ($recentPath in $recentPaths) {
     if (Test-Path $recentPath) {
-        Write-Host "`nCleaning Recent files: $recentPath" -ForegroundColor Cyan
-        $recentCount = 0
-
         Get-ChildItem -Path $recentPath -File -ErrorAction SilentlyContinue | ForEach-Object {
             $file = $_
-            $name  = $file.Name.ToLower()
-
+            $name = $file.Name.ToLower()
             $delete = $false
 
+            # Check for suspicious filenames
             if ($name -match 'thing' -or $name -match 'storage') {
                 $delete = $true
             }
 
-            if (-not $delete -and $file.Extension -eq '.lnk') {
-                try {
-                    $shell    = New-Object -ComObject WScript.Shell
-                    $shortcut = $shell.CreateShortcut($file.FullName)
-                    $target   = ($shortcut.TargetPath | ForEach-Object { $_.ToLower() })
+            # Check for C++ files (.cpp)
+            if ($file.Extension -eq '.cpp' -or $name -match '\.cpp$') {
+                $delete = $true
+                Write-Host "✓ Found C++ file in recent: $($file.Name)" -ForegroundColor Yellow
+            }
 
-                    if ($target -and $target -match '\.ahk') {
-                        $delete = $true
+            # Check for AHK files
+            if ($file.Extension -eq '.ahk' -or $name -match '\.ahk$') {
+                $delete = $true
+                Write-Host "✓ Found AHK file in recent: $($file.Name)" -ForegroundColor Yellow
+            }
+
+            # Check shortcuts for USB content and AHK targets
+            if ($file.Extension -eq '.lnk') {
+                try {
+                    $targetPath = (Get-ShortcutTarget $file.FullName)
+                    
+                    if ($targetPath) {
+                        # Check if shortcut target is on non-C drive (USB)
+                        if (Is-NonC-Drive-Path $targetPath) {
+                            $delete = $true
+                            Write-Host "✓ Found USB shortcut target: $targetPath" -ForegroundColor Yellow
+                        }
+                        
+                        # Check if shortcut target is AHK file
+                        if ($targetPath -match '\.ahk$') {
+                            $delete = $true
+                            Write-Host "✓ Found AHK shortcut target: $targetPath" -ForegroundColor Yellow
+                        }
+                        
+                        # Check if shortcut target matches keywords
+                        if (Contains-Keyword $targetPath) {
+                            $delete = $true
+                            Write-Host "✓ Found keyword in shortcut target: $targetPath" -ForegroundColor Yellow
+                        }
                     }
                 } catch {
-                    # ignore shortcut read errors
+                    # Ignore shortcut read errors
                 }
             }
 
@@ -298,10 +404,10 @@ foreach ($recentPath in $recentPaths) {
                 }
             }
         }
-
-        Write-Host "Recent files cleanup completed for $recentPath. Files removed: $recentCount" -ForegroundColor Yellow
     }
 }
+
+Write-Host "Enhanced Recent files cleanup completed. Files removed: $recentCount" -ForegroundColor Yellow
 
 # PowerShell history cleanup
 Write-Host "`nCleaning PowerShell history..." -ForegroundColor Cyan
@@ -357,8 +463,15 @@ foreach ($tempPath in $tempPaths) {
 }
 
 Write-Host "`n" + "="*50 -ForegroundColor Green
-Write-Host "TARGETED CLEANUP COMPLETED!" -ForegroundColor Green
+Write-Host "ENHANCED TARGETED CLEANUP COMPLETED!" -ForegroundColor Green
 Write-Host "="*50 -ForegroundColor Green
 Write-Host "Total registry items removed: $totalRemoved" -ForegroundColor Yellow
 Write-Host "Total prefetch files removed: $prefetchCount" -ForegroundColor Yellow
+Write-Host "Total recent files removed: $recentCount" -ForegroundColor Yellow
+Write-Host "Detection capabilities:" -ForegroundColor Cyan
+Write-Host "  • Keyword targeting (aimbot, usermode, MainRunner, etc.)" -ForegroundColor White
+Write-Host "  • C++ files (.cpp)" -ForegroundColor White
+Write-Host "  • AHK files and shortcuts" -ForegroundColor White
+Write-Host "  • USB drive content (non-C: drives)" -ForegroundColor White
+Write-Host "  • File content scanning in destination folders" -ForegroundColor White
 Write-Host "Recommendation: Restart your computer to complete the cleanup process." -ForegroundColor Yellow
