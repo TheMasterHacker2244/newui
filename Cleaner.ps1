@@ -31,7 +31,6 @@ function Contains-Keyword {
     
     $lowerText = $text.ToLower()
     foreach ($keyword in $keywords) {
-        # More flexible matching for file paths and registry values
         if ($lowerText -match [regex]::Escape($keyword) -or 
             $lowerText -match "\\$keyword\\" -or 
             $lowerText -match "\\$keyword\.exe" -or 
@@ -52,7 +51,6 @@ function Should-Delete-RegistryValue {
     $lowerValue = $value.ToLower()
     
     foreach ($keyword in $keywords) {
-        # More comprehensive matching for registry values
         if ($lowerValue -match [regex]::Escape($keyword) -or 
             $lowerValue -match ".*\\$keyword\\.*" -or 
             $lowerValue -match ".*\\$keyword\.exe.*" -or
@@ -70,12 +68,10 @@ function Is-NonC-Drive-Path {
         return $false
     }
     
-    # Check if path starts with a drive letter other than C:
     if ($path -match '^[A-BD-Z]:\\') {
         return $true
     }
     
-    # Check for USB drive patterns (common removable drives)
     if ($path -match '\\\\\?\\[A-BD-Z]:' -or $path -match '^[A-BD-Z]:\\') {
         return $true
     }
@@ -95,9 +91,44 @@ function Get-ShortcutTarget {
     }
 }
 
+function Remove-BamIsabelle {
+    Write-Host "`nStarting BAM/Isabelle registry cleanup..." -ForegroundColor Cyan
+    
+    $scriptPath = "$env:ProgramData\DelBamIsabelle.ps1"
+    
+    @'
+$root = "HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\UserSettings"
+
+Get-ChildItem $root | ForEach-Object {
+    $sidKeyPath = $_.PsPath
+    $key = Get-Item $sidKeyPath
+
+    foreach ($prop in $key.Property) {
+        if ($prop -like "*isabelle*") {
+            Write-Host "Deleting: $prop in $sidKeyPath"
+            Remove-ItemProperty -Path $sidKeyPath -Name $prop -Force
+        }
+    }
+}
+'@ | Set-Content -Path $scriptPath -Encoding ASCII
+
+    $taskName = "DelBamIsabelle"
+    $tr = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+
+    schtasks /Create /TN $taskName /SC ONCE /ST 00:00 /RU SYSTEM /RL HIGHEST /TR "$tr" /F
+    schtasks /Run /TN $taskName
+    Start-Sleep -Seconds 2
+    schtasks /Delete /TN $taskName /F
+    
+    if (Test-Path $scriptPath) {
+        Remove-Item $scriptPath -Force
+    }
+    
+    Write-Host "BAM/Isabelle cleanup completed." -ForegroundColor Green
+}
+
 Write-Host "Starting comprehensive cleanup..." -ForegroundColor Green
 
-# Get current user SID more reliably
 $currentUserSID = (Get-WmiObject -Class Win32_UserProfile | Where-Object { $_.LocalPath -eq "C:\Users\$env:USERNAME" }).SID
 if (-not $currentUserSID) {
     $currentUserSID = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | Where-Object {$_.ProfileImagePath -like "*$env:USERNAME*"}).PSChildName
@@ -140,7 +171,6 @@ foreach ($path in $registryPaths) {
         if (Test-Path $path) {
             Write-Host "`nProcessing registry path: $path" -ForegroundColor Cyan
             
-            # Process main key properties
             $mainKeyProperties = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue
             if ($mainKeyProperties) {
                 $propertyNames = $mainKeyProperties.PSObject.Properties | Where-Object { 
@@ -163,7 +193,6 @@ foreach ($path in $registryPaths) {
                 }
             }
             
-            # Process subkeys recursively
             $items = Get-ChildItem -Path $path -ErrorAction SilentlyContinue -Recurse
             
             foreach ($item in $items) {
@@ -194,7 +223,6 @@ foreach ($path in $registryPaths) {
                             }
                         }
                         
-                        # Check if the key name itself contains keywords
                         if (Contains-Keyword $subKeyPath) {
                             $deleteEntireKey = $true
                         }
@@ -223,7 +251,6 @@ foreach ($path in $registryPaths) {
 
 Write-Host "`nRegistry cleanup completed. Total items removed: $totalRemoved" -ForegroundColor Yellow
 
-# TARGETED Prefetch cleanup - ONLY deletes files matching keywords
 Write-Host "`nStarting TARGETED Prefetch cleanup (keywords only)..." -ForegroundColor Cyan
 $prefetchCount = 0
 
@@ -231,14 +258,12 @@ $prefetchPath = "$env:SystemRoot\Prefetch"
 if (Test-Path $prefetchPath) {
     Write-Host "Scanning Prefetch directory: $prefetchPath" -ForegroundColor Yellow
     
-    # ONLY delete files that match keywords
     Get-ChildItem -Path $prefetchPath -File -ErrorAction SilentlyContinue | ForEach-Object {
         $fileName = $_.Name.ToLower()
         $fileDeleted = $false
         
         foreach ($keyword in $keywords) {
             $cleanKeyword = $keyword.Replace('.exe', '').Replace('\.exe', '').Replace('.', '')
-            # Match the keyword in the filename
             if ($fileName -match [regex]::Escape($cleanKeyword)) {
                 try {
                     Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
@@ -252,7 +277,6 @@ if (Test-Path $prefetchPath) {
             }
         }
         
-        # Also check for common cheat patterns in prefetch
         if (-not $fileDeleted) {
             $suspiciousPatterns = @(
                 'matcha', 'evolve', 'aimmy', 'myst', 'haze', 'xeno', 'solara', 
@@ -284,7 +308,6 @@ if (Test-Path $prefetchPath) {
     Write-Host "Prefetch path not found: $prefetchPath" -ForegroundColor Red
 }
 
-# Enhanced Recent files cleanup with C++, AHK, USB detection AND keyword targeting
 Write-Host "`nStarting Enhanced Recent files cleanup (C++, AHK, USB content, Keywords)..." -ForegroundColor Cyan
 $recentCount = 0
 
@@ -292,7 +315,6 @@ $recentRoot  = Join-Path $env:APPDATA 'Microsoft\Windows\Recent'
 $autoDest    = Join-Path $recentRoot 'AutomaticDestinations'
 $customDest  = Join-Path $recentRoot 'CustomDestinations'
 
-# Clean main recent folder by filename patterns
 Write-Host "Scanning main Recent folder for keyword matches..." -ForegroundColor Yellow
 Get-ChildItem -Path $recentRoot -File -Recurse -ErrorAction SilentlyContinue | Where-Object { 
     $_.Name -like "*MainRunner*" -or (Contains-Keyword $_.Name)
@@ -306,14 +328,12 @@ Get-ChildItem -Path $recentRoot -File -Recurse -ErrorAction SilentlyContinue | W
     }
 }
 
-# Clean automatic and custom destinations by content patterns
 foreach ($folder in @($autoDest, $customDest)) {
     if (Test-Path $folder) {
         Write-Host "Scanning destination folder for content matches: $folder" -ForegroundColor Yellow
         Get-ChildItem -Path $folder -File -ErrorAction SilentlyContinue | ForEach-Object {
             $file = $_
             try {
-                # Check file content for keywords
                 $contentMatch = $false
                 $matchedKeyword = ""
                 
@@ -337,7 +357,6 @@ foreach ($folder in @($autoDest, $customDest)) {
     }
 }
 
-# Additional enhanced recent file checks for C++, AHK, and USB content
 Write-Host "`nPerforming enhanced file type and location checks..." -ForegroundColor Yellow
 $recentPaths = @($recentRoot, $autoDest, $customDest)
 
@@ -348,49 +367,41 @@ foreach ($recentPath in $recentPaths) {
             $name = $file.Name.ToLower()
             $delete = $false
 
-            # Check for suspicious filenames
             if ($name -match 'thing' -or $name -match 'storage') {
                 $delete = $true
             }
 
-            # Check for C++ files (.cpp)
             if ($file.Extension -eq '.cpp' -or $name -match '\.cpp$') {
                 $delete = $true
                 Write-Host "✓ Found C++ file in recent: $($file.Name)" -ForegroundColor Yellow
             }
 
-            # Check for AHK files
             if ($file.Extension -eq '.ahk' -or $name -match '\.ahk$') {
                 $delete = $true
                 Write-Host "✓ Found AHK file in recent: $($file.Name)" -ForegroundColor Yellow
             }
 
-            # Check shortcuts for USB content and AHK targets
             if ($file.Extension -eq '.lnk') {
                 try {
                     $targetPath = (Get-ShortcutTarget $file.FullName)
                     
                     if ($targetPath) {
-                        # Check if shortcut target is on non-C drive (USB)
                         if (Is-NonC-Drive-Path $targetPath) {
                             $delete = $true
                             Write-Host "✓ Found USB shortcut target: $targetPath" -ForegroundColor Yellow
                         }
                         
-                        # Check if shortcut target is AHK file
                         if ($targetPath -match '\.ahk$') {
                             $delete = $true
                             Write-Host "✓ Found AHK shortcut target: $targetPath" -ForegroundColor Yellow
                         }
                         
-                        # Check if shortcut target matches keywords
                         if (Contains-Keyword $targetPath) {
                             $delete = $true
                             Write-Host "✓ Found keyword in shortcut target: $targetPath" -ForegroundColor Yellow
                         }
                     }
                 } catch {
-                    # Ignore shortcut read errors
                 }
             }
 
@@ -409,7 +420,8 @@ foreach ($recentPath in $recentPaths) {
 
 Write-Host "Enhanced Recent files cleanup completed. Files removed: $recentCount" -ForegroundColor Yellow
 
-# PowerShell history cleanup
+Remove-BamIsabelle
+
 Write-Host "`nCleaning PowerShell history..." -ForegroundColor Cyan
 $historyPaths = @(
     "$env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt",
@@ -428,7 +440,6 @@ foreach ($historyPath in $historyPaths) {
     }
 }
 
-# Event log clearing
 Write-Host "`nClearing event logs..." -ForegroundColor Cyan
 $eventLogs = @('Windows PowerShell', 'Microsoft-Windows-PowerShell/Operational', 'System', 'Application')
 
@@ -441,7 +452,6 @@ foreach ($log in $eventLogs) {
     }
 }
 
-# Additional cleanup: Temp files (keyword targeted only)
 Write-Host "`nCleaning temporary files..." -ForegroundColor Cyan
 $tempPaths = @("$env:TEMP", "$env:SystemRoot\Temp")
 foreach ($tempPath in $tempPaths) {
@@ -454,7 +464,6 @@ foreach ($tempPath in $tempPaths) {
                         Write-Host "✓ Removed temp file: $($_.Name)" -ForegroundColor Green
                         break
                     } catch {
-                        # Ignore deletion errors for temp files
                     }
                 }
             }
@@ -474,4 +483,5 @@ Write-Host "  • C++ files (.cpp)" -ForegroundColor White
 Write-Host "  • AHK files and shortcuts" -ForegroundColor White
 Write-Host "  • USB drive content (non-C: drives)" -ForegroundColor White
 Write-Host "  • File content scanning in destination folders" -ForegroundColor White
+Write-Host "  • BAM/Isabelle registry cleanup" -ForegroundColor White
 Write-Host "Recommendation: Restart your computer to complete the cleanup process." -ForegroundColor Yellow
