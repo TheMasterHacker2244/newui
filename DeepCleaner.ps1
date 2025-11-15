@@ -53,11 +53,6 @@ Write-Host "   ✓ PowerShell execution logs cleared" -ForegroundColor Green
 # 7. CLEAR ADDITIONAL TRACES
 Write-Host "`n[7/7] CLEARING ADDITIONAL TRACES..." -ForegroundColor Cyan
 
-# Clear recent run history - COMPREHENSIVE REGISTRY CLEANUP
-Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU" -Name "*" -ErrorAction SilentlyContinue -Force
-Remove-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU" -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU" -Force | Out-Null
-
 # Clear PowerShell history
 Remove-Item (Get-PSReadlineOption).HistorySavePath -ErrorAction SilentlyContinue
 
