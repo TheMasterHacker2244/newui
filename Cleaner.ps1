@@ -13,7 +13,7 @@ $keywords = @(
     'matcha\.exe','triggerbot\.exe','aimmy\.exe','mystw\.exe','thing\.exe','dx9ware\.exe',
     'fusionhacks\.zip','release\.zip','build\.zip','build\.rar','bootstrappernew',
     'santoware','bootstrappernew\.exe','xeno\.exe','xenoui\.exe','solara\.exe',
-    'mapper\.exe','evolve\.exe','boostrapper\.exe','mathshard','clean\.exe',
+    'mapper\.exe','map\.exe','evolve\.exe','boostrapper\.exe','mathshard','clean\.exe',
     'boostrappernew\.exe','authenticator\.exe','thing\.exe','app.exe','update.exe','updater.exe','upgrade','threat-','cleaner',
     "J:","A:","B:","D:","E:","F:","G:","H:","I:","J:","K:","L:","M:",
     "N:","O:","P:","Q:","R:","S:","T:","U:","V:","W:","X:","Y:","Z:",
