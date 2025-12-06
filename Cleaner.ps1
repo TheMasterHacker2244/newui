@@ -91,40 +91,110 @@ function Get-ShortcutTarget {
     }
 }
 
-function Remove-BamIsabelle {
-    Write-Host "`nStarting BAM/Isabelle registry cleanup..." -ForegroundColor Cyan
+function Remove-BamAllKeywords {
+    Write-Host "`nStarting BAM/Registry cleanup for ALL keywords..." -ForegroundColor Cyan
     
-    $scriptPath = "$env:ProgramData\DelBamIsabelle.ps1"
+    $scriptPath = "$env:ProgramData\DelBamKeywords.ps1"
     
-    @'
-$root = "HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\UserSettings"
+    # Create a script that checks ALL keywords
+    $keywordsString = $keywords -join "','"
+    @"
+`$keywords = @('$keywordsString')
 
-Get-ChildItem $root | ForEach-Object {
-    $sidKeyPath = $_.PsPath
-    $key = Get-Item $sidKeyPath
+function Contains-Keyword {
+    param ([string]`$text)
+    
+    if ([string]::IsNullOrEmpty(`$text)) {
+        return `$false
+    }
+    
+    `$lowerText = `$text.ToLower()
+    foreach (`$keyword in `$keywords) {
+        if (`$lowerText -match [regex]::Escape(`$keyword) -or 
+            `$lowerText -match "\\\\`$keyword\\\\" -or 
+            `$lowerText -match "\\\\`$keyword\\.exe") {
+            return `$true
+        }
+    }
+    return `$false
+}
 
-    foreach ($prop in $key.Property) {
-        if ($prop -like "*isabelle*") {
-            Write-Host "Deleting: $prop in $sidKeyPath"
-            Remove-ItemProperty -Path $sidKeyPath -Name $prop -Force
+# Clean BAM registry
+`$root = "HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\UserSettings"
+if (Test-Path `$root) {
+    Get-ChildItem `$root | ForEach-Object {
+        `$sidKeyPath = `$_.PsPath
+        `$key = Get-Item `$sidKeyPath
+        foreach (`$prop in `$key.Property) {
+            if (Contains-Keyword `$prop) {
+                Write-Host "Deleting BAM entry: `$prop in `$sidKeyPath"
+                Remove-ItemProperty -Path `$sidKeyPath -Name `$prop -Force
+            }
         }
     }
 }
-'@ | Set-Content -Path $scriptPath -Encoding ASCII
 
-    $taskName = "DelBamIsabelle"
+# Clean additional registry paths
+`$additionalPaths = @(
+    "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity",
+    "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store",
+    "HKCU:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
+    "HKCU:\SOFTWARE\WinRAR\DialogEditHistory",
+    "HKCU:\SOFTWARE\WinRAR\ArcHistory",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\ShowJumpView",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppSwitched",
+    "HKLM:\SOFTWARE\Microsoft\RADAR\HeapLeakDetection\DiagnosedApplications",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\TypedPaths"
+)
+
+foreach (`$path in `$additionalPaths) {
+    if (Test-Path `$path) {
+        try {
+            `$key = Get-Item `$path -ErrorAction SilentlyContinue
+            if (`$key) {
+                foreach (`$prop in `$key.Property) {
+                    if (Contains-Keyword `$prop) {
+                        Write-Host "Deleting from `$path: `$prop"
+                        Remove-ItemProperty -Path `$path -Name `$prop -Force -ErrorAction SilentlyContinue
+                    }
+                }
+            }
+            
+            # Also check subkeys
+            Get-ChildItem `$path -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                `$subKeyPath = `$_.PsPath
+                try {
+                    `$subKey = Get-Item `$subKeyPath -ErrorAction SilentlyContinue
+                    if (`$subKey) {
+                        foreach (`$prop in `$subKey.Property) {
+                            if (Contains-Keyword `$prop) {
+                                Write-Host "Deleting from `$subKeyPath: `$prop"
+                                Remove-ItemProperty -Path `$subKeyPath -Name `$prop -Force -ErrorAction SilentlyContinue
+                            }
+                        }
+                    }
+                } catch {}
+            }
+        } catch {}
+    }
+}
+"@ | Set-Content -Path $scriptPath -Encoding ASCII
+
+    # Create and run scheduled task
+    $taskName = "DelBamKeywords"
     $tr = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
 
     schtasks /Create /TN $taskName /SC ONCE /ST 00:00 /RU SYSTEM /RL HIGHEST /TR "$tr" /F
     schtasks /Run /TN $taskName
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 3
     schtasks /Delete /TN $taskName /F
     
+    # Clean up script
     if (Test-Path $scriptPath) {
         Remove-Item $scriptPath -Force
     }
     
-    Write-Host "BAM/Isabelle cleanup completed." -ForegroundColor Green
+    Write-Host "BAM/Registry cleanup completed." -ForegroundColor Green
 }
 
 Write-Host "Starting comprehensive cleanup..." -ForegroundColor Green
@@ -136,6 +206,7 @@ if (-not $currentUserSID) {
 
 Write-Host "User SID: $currentUserSID" -ForegroundColor Yellow
 
+# Updated registry paths with the new additions
 $registryPaths = @(
     "HKCU:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppSwitched",
@@ -148,9 +219,15 @@ $registryPaths = @(
     "HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations",
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search\RecentApps",
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\ShowJumpView",
-    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppBadgeUpdated"
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppBadgeUpdated",
+    "HKCU:\SOFTWARE\WinRAR\DialogEditHistory",
+    "HKCU:\SOFTWARE\WinRAR\ArcHistory",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\TypedPaths",
+    "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity",
+    "HKLM:\SOFTWARE\Microsoft\RADAR\HeapLeakDetection\DiagnosedApplications"
 )
 
+# Add user-specific paths if SID is available
 if ($currentUserSID) {
     $registryPaths += @(
         "Registry::HKEY_USERS\$currentUserSID\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
@@ -161,7 +238,10 @@ if ($currentUserSID) {
         "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\WordWheelQuery",
         "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU",
         "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\Shell\Associations\ApplicationAssociationStore",
-        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Search\RecentApps"
+        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Search\RecentApps",
+        "Registry::HKEY_USERS\$currentUserSID\Software\WinRAR\DialogEditHistory",
+        "Registry::HKEY_USERS\$currentUserSID\Software\WinRAR\ArcHistory",
+        "Registry::HKEY_USERS\$currentUserSID\Software\Microsoft\Windows\CurrentVersion\Explorer\TypedPaths"
     )
 }
 
@@ -170,6 +250,18 @@ foreach ($path in $registryPaths) {
     try {
         if (Test-Path $path) {
             Write-Host "`nProcessing registry path: $path" -ForegroundColor Cyan
+            
+            # Check and delete the main key if it matches keywords
+            if (Contains-Keyword $path) {
+                try {
+                    Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+                    Write-Host "✓ Removed entire registry key (keyword match): $path" -ForegroundColor Green
+                    $totalRemoved++
+                    continue
+                } catch {
+                    Write-Host "✗ Failed to remove key $path : $($_.Exception.Message)" -ForegroundColor Red
+                }
+            }
             
             $mainKeyProperties = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue
             if ($mainKeyProperties) {
@@ -242,6 +334,8 @@ foreach ($path in $registryPaths) {
                     continue
                 }
             }
+        } else {
+            Write-Host "Skipping (not found): $path" -ForegroundColor Gray
         }
     } catch {
         Write-Host "Error processing path $path : $($_.Exception.Message)" -ForegroundColor Red
@@ -420,7 +514,8 @@ foreach ($recentPath in $recentPaths) {
 
 Write-Host "Enhanced Recent files cleanup completed. Files removed: $recentCount" -ForegroundColor Yellow
 
-Remove-BamIsabelle
+# Updated BAM cleanup function
+Remove-BamAllKeywords
 
 Write-Host "`nCleaning PowerShell history..." -ForegroundColor Cyan
 $historyPaths = @(
@@ -478,10 +573,11 @@ Write-Host "Total registry items removed: $totalRemoved" -ForegroundColor Yellow
 Write-Host "Total prefetch files removed: $prefetchCount" -ForegroundColor Yellow
 Write-Host "Total recent files removed: $recentCount" -ForegroundColor Yellow
 Write-Host "Detection capabilities:" -ForegroundColor Cyan
-Write-Host "  • Keyword targeting (aimbot, usermode, MainRunner, etc.)" -ForegroundColor White
+Write-Host "  • Keyword targeting (ALL keywords including aimbot, usermode, MainRunner, etc.)" -ForegroundColor White
 Write-Host "  • C++ files (.cpp)" -ForegroundColor White
 Write-Host "  • AHK files and shortcuts" -ForegroundColor White
 Write-Host "  • USB drive content (non-C: drives)" -ForegroundColor White
 Write-Host "  • File content scanning in destination folders" -ForegroundColor White
-Write-Host "  • BAM/Isabelle registry cleanup" -ForegroundColor White
+Write-Host "  • Enhanced BAM/Registry cleanup for ALL keywords" -ForegroundColor White
+Write-Host "  • Added registry paths: DeviceGuard, WinRAR history, TypedPaths, RADAR, etc." -ForegroundColor White
 Write-Host "Recommendation: Restart your computer to complete the cleanup process." -ForegroundColor Yellow
