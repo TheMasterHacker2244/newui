@@ -17,7 +17,7 @@ $keywords = @(
     'boostrappernew\.exe','authenticator\.exe','thing\.exe','app.exe','update.exe','updater.exe','upgrade','threat-','cleaner',
     "J:","A:","B:","D:","E:","F:","G:","H:","I:","J:","K:","L:","M:",
     "N:","O:","P:","Q:","R:","S:","T:","U:","V:","W:","X:","Y:","Z:",
-    "Aura","loader","MainRunner","usermode"
+    "Aura","loader","MainRunner","usermode","newui","oldui"
 )
 
 $keywords = $keywords | ForEach-Object { $_.ToLower() }
